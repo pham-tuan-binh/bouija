@@ -11,12 +11,6 @@
 #define LED_STRIP_COUNT 40
 #define LED_STRIP_MODEL LED_MODEL_WS2812
 
-// Touch input configuration
-#define TOUCH_GPIO_SLAP 4
-#define TOUCH_GPIO_CAP 5
-#define TOUCH_GPIO_SUP 6
-#define TOUCH_GPIO_PEACE 7
-#define TOUCH_THRESHOLD 70000
 
 // Special LED indices for slap/cap/sup/peace (last 4 LEDs)
 #define LED_PEACE 36
@@ -75,5 +69,14 @@ esp_err_t led_device_init_sequence(void);
 // LED animation functions
 esp_err_t led_show_loading_sequence(void);
 esp_err_t led_highlight_buttons(void);
+
+// Render system functions
+void led_render_loop(void *pvParameters);
+esp_err_t led_render_frame(void);
+esp_err_t led_set_ambient_effect(bool enabled);
+esp_err_t led_set_button_shimmer(bool enabled);
+esp_err_t led_set_text_overlay(const char *text, uint32_t color, int duration_ms);
+esp_err_t led_set_button_highlight(int button_index, bool highlighted);
+esp_err_t led_set_button_pulse(int button_index, bool pulsing);
 
 #endif // LED_H

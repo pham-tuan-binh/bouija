@@ -2,12 +2,35 @@
 #include "esp_log.h"
 #include "string.h"
 #include "ctype.h"
+#include "math.h"
+#include "time.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "LED";
 static led_strip_handle_t led_strip = NULL;
 static uint8_t current_brightness = LED_DEFAULT_BRIGHTNESS;
+
+// Render system state
+static bool render_loop_active = false;
+static bool ambient_effect_enabled = false;
+static bool button_shimmer_enabled = false;
+static char text_overlay[64] = {0};
+static uint32_t text_overlay_color = LED_COLOR_WHITE;
+static int text_overlay_duration_ms = 0;
+static int text_overlay_start_time = 0;
+static int text_overlay_char_index = 0;
+static bool button_highlighted[4] = {false, false, false, false};
+static bool button_pulsing[4] = {false, false, false, false};
+static uint32_t button_colors[4] = {LED_COLOR_RED, LED_COLOR_CYAN, LED_COLOR_YELLOW, LED_COLOR_GREEN};
+static int button_leds[4] = {LED_SLAP, LED_CAP, LED_SUP, LED_PEACE};
+
+// Static function declarations
+static void led_render_ambient_effect(void);
+static void led_render_button_shimmer(void);
+static void led_render_button_highlights(void);
+static void led_render_button_pulse(void);
+static void led_render_text_overlay(void);
 
 esp_err_t led_init(void)
 {
@@ -498,6 +521,258 @@ esp_err_t led_highlight_buttons(void)
         ESP_LOGI(TAG, "Highlighted %s button (LED %d)", button_names[i], button_leds[i]);
     }
     
+    return ESP_OK;
+}
+
+// Render loop running at 30fps
+void led_render_loop(void *pvParameters)
+{
+    ESP_LOGI(TAG, "Starting LED render loop at 30fps");
+    render_loop_active = true;
+    
+    const TickType_t frame_delay = pdMS_TO_TICKS(33); // ~30fps (1000ms/30fps = 33.33ms)
+    
+    while (render_loop_active) {
+        led_render_frame();
+        vTaskDelay(frame_delay);
+    }
+    
+    ESP_LOGI(TAG, "LED render loop stopped");
+    vTaskDelete(NULL);
+}
+
+// Render a single frame
+esp_err_t led_render_frame(void)
+{
+    if (!led_strip) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Clear all LEDs first
+    for (int i = 0; i < LED_STRIP_COUNT; i++) {
+        ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, i, 0, 0, 0));
+    }
+    
+    // Render ambient effect (shimmering wave on alphabet LEDs)
+    if (ambient_effect_enabled) {
+        led_render_ambient_effect();
+    }
+    
+    // Render button shimmer effect
+    if (button_shimmer_enabled) {
+        led_render_button_shimmer();
+    }
+    
+    // Render button highlights
+    led_render_button_highlights();
+    
+    // Render button pulse effects
+    led_render_button_pulse();
+    
+    // Render text overlay
+    led_render_text_overlay();
+    
+    // Refresh the LED strip
+    ESP_ERROR_CHECK(led_strip_refresh(led_strip));
+    
+    return ESP_OK;
+}
+
+// Render ambient shimmering effect on alphabet LEDs (0-35)
+static void led_render_ambient_effect(void)
+{
+    static int ambient_cycle = 0;
+    ambient_cycle++;
+    
+    // Create a shimmering wave effect across alphabet LEDs
+    for (int i = 0; i < 36; i++) {
+        // Calculate wave position with offset for each LED
+        float wave_pos = (ambient_cycle * 0.1) + (i * 0.3);
+        float intensity = (sin(wave_pos) + 1.0) / 2.0; // 0.0 to 1.0
+        
+        // Very low intensity white shimmer
+        uint8_t shimmer_brightness = (uint8_t)(intensity * 20); // Max 20/255 brightness
+        
+        ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, i, 
+            shimmer_brightness, shimmer_brightness, shimmer_brightness));
+    }
+}
+
+// Render button shimmer effect on button LEDs (36-39)
+static void led_render_button_shimmer(void)
+{
+    static int button_shimmer_cycle = 0;
+    button_shimmer_cycle++;
+    
+    // Create shimmering effect on button LEDs
+    for (int i = 0; i < 4; i++) {
+        // Calculate wave position with offset for each button
+        float wave_pos = (button_shimmer_cycle * 0.15) + (i * 0.5);
+        float intensity = (sin(wave_pos) + 1.0) / 2.0; // 0.0 to 1.0
+        
+        // White shimmer with higher intensity than ambient
+        uint8_t shimmer_brightness = (uint8_t)(intensity * 80); // Max 80/255 brightness
+        
+        ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, button_leds[i], 
+            shimmer_brightness, shimmer_brightness, shimmer_brightness));
+    }
+}
+
+// Render button highlights
+static void led_render_button_highlights(void)
+{
+    for (int i = 0; i < 4; i++) {
+        if (button_highlighted[i] && !button_pulsing[i]) {
+            uint32_t adjusted_color = led_apply_brightness(button_colors[i], current_brightness);
+            uint8_t r = (adjusted_color >> 16) & 0xFF;
+            uint8_t g = (adjusted_color >> 8) & 0xFF;
+            uint8_t b = adjusted_color & 0xFF;
+            
+            ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, button_leds[i], r, g, b));
+        }
+    }
+}
+
+// Render button pulse effects
+static void led_render_button_pulse(void)
+{
+    static int pulse_cycle = 0;
+    pulse_cycle++;
+    
+    for (int i = 0; i < 4; i++) {
+        if (button_pulsing[i]) {
+            // Create slow pulsing white effect
+            float pulse_pos = (pulse_cycle * 0.05) + (i * 0.2); // Much slower: 0.05 instead of 0.2
+            float intensity = (sin(pulse_pos) + 1.0) / 2.0; // 0.0 to 1.0
+            
+            // White pulse with lower intensity
+            uint8_t pulse_brightness = (uint8_t)(intensity * 80); // Max 80/255 brightness (lower intensity)
+            
+            ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, button_leds[i], 
+                pulse_brightness, pulse_brightness, pulse_brightness));
+        }
+    }
+}
+
+// Render text overlay with fade in/out effect
+static void led_render_text_overlay(void)
+{
+    if (text_overlay[0] == '\0' || text_overlay_duration_ms <= 0) {
+        return;
+    }
+    
+    int current_time = xTaskGetTickCount() * portTICK_PERIOD_MS; // Convert to milliseconds
+    int elapsed_time = current_time - text_overlay_start_time;
+    
+    if (elapsed_time >= text_overlay_duration_ms) {
+        // Text overlay finished, clear it
+        text_overlay[0] = '\0';
+        text_overlay_duration_ms = 0;
+        return;
+    }
+    
+    // Calculate which character to display based on elapsed time
+    // Use fixed duration per character instead of dividing total duration
+    int char_duration = 1000; // 1000ms (1 second) per character
+    int current_char_index = elapsed_time / char_duration;
+    
+    if (current_char_index >= strlen(text_overlay)) {
+        current_char_index = strlen(text_overlay) - 1;
+    }
+    
+    char current_char = text_overlay[current_char_index];
+    
+    // Skip whitespace and punctuation
+    if (isspace(current_char) || ispunct(current_char)) {
+        return;
+    }
+    
+    int led_index = char_to_led_index(current_char);
+    if (led_index != -1) {
+        // Calculate fade in/out effect within character duration
+        int char_elapsed = elapsed_time % char_duration;
+        float fade_progress = (float)char_elapsed / char_duration;
+        
+        // Fade in for first half, fade out for second half
+        float intensity;
+        if (fade_progress < 0.5) {
+            intensity = fade_progress * 2.0; // 0.0 to 1.0
+        } else {
+            intensity = (1.0 - fade_progress) * 2.0; // 1.0 to 0.0
+        }
+        
+        uint32_t adjusted_color = led_apply_brightness(text_overlay_color, current_brightness);
+        uint8_t r = (adjusted_color >> 16) & 0xFF;
+        uint8_t g = (adjusted_color >> 8) & 0xFF;
+        uint8_t b = adjusted_color & 0xFF;
+        
+        r = (uint8_t)(r * intensity);
+        g = (uint8_t)(g * intensity);
+        b = (uint8_t)(b * intensity);
+        
+        ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, led_index, r, g, b));
+    }
+}
+
+// Control functions for the render system
+esp_err_t led_set_ambient_effect(bool enabled)
+{
+    ambient_effect_enabled = enabled;
+    ESP_LOGI(TAG, "Ambient effect %s", enabled ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t led_set_button_shimmer(bool enabled)
+{
+    button_shimmer_enabled = enabled;
+    ESP_LOGI(TAG, "Button shimmer effect %s", enabled ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t led_set_text_overlay(const char *text, uint32_t color, int duration_ms)
+{
+    if (!text) {
+        ESP_LOGE(TAG, "Text is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    strncpy(text_overlay, text, sizeof(text_overlay) - 1);
+    text_overlay[sizeof(text_overlay) - 1] = '\0';
+    text_overlay_color = color;
+    
+    // Calculate total duration based on number of characters (1000ms per character)
+    int char_duration = 1000;
+    int text_length = strlen(text_overlay);
+    text_overlay_duration_ms = text_length * char_duration;
+    
+    text_overlay_start_time = xTaskGetTickCount() * portTICK_PERIOD_MS; // Convert to milliseconds
+    text_overlay_char_index = 0;
+    
+    ESP_LOGI(TAG, "Text overlay set: '%s' for %dms (%d chars)", text, text_overlay_duration_ms, text_length);
+    return ESP_OK;
+}
+
+esp_err_t led_set_button_highlight(int button_index, bool highlighted)
+{
+    if (button_index < 0 || button_index >= 4) {
+        ESP_LOGE(TAG, "Invalid button index: %d", button_index);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    button_highlighted[button_index] = highlighted;
+    ESP_LOGI(TAG, "Button %d highlight %s", button_index, highlighted ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t led_set_button_pulse(int button_index, bool pulsing)
+{
+    if (button_index < 0 || button_index >= 4) {
+        ESP_LOGE(TAG, "Invalid button index: %d", button_index);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    button_pulsing[button_index] = pulsing;
+    ESP_LOGI(TAG, "Button %d pulse %s", button_index, pulsing ? "enabled" : "disabled");
     return ESP_OK;
 }
 
