@@ -1,0 +1,2 @@
+source /Users/binhpham/workspace/bouja/firmware/tinyllama/build/bootloader/gdbinit/symbols
+source /Users/binhpham/workspace/bouja/firmware/tinyllama/build/bootloader/gdbinit/connect

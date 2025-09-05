@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/Users/binhpham/workspace/bouja/firmware/simple/build/CMakeFiles/bootloader
+/Users/binhpham/workspace/bouja/firmware/simple/build/CMakeFiles/bootloader.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/CMakeFiles/bootloader-complete.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/Users/binhpham/workspace/bouja/firmware/simple/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
