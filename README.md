@@ -6,6 +6,8 @@ A PCB business card that runs an LLM locally with an Ouija board-inspired LED la
 
 Watch a video on the design of this business card [here](https://youtu.be/WC3O2cKT8Eo).
 
+**Special thanks to NextPB for sponsoring this project. Check out their website [here](https://www.nextpcb.com?code=Build_With_Binh)**
+
 ## Overview
 
 Bouija is a unique business card featuring an ESP32-S3 that runs a local Large Language Model. The device uses 40 individually addressable WS2812B LEDs arranged in an Ouija board pattern to visualize text generation in real-time.
